@@ -1,0 +1,165 @@
+import { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { getStandings, getTeamSquad, getFixtures, getInjuries } from '../services/api';
+import type { Standing, Player, Fixture, InjuryEntry } from '../types';
+import SquadList from '../components/SquadList';
+import MatchList from '../components/MatchList';
+import StaffInfo from '../components/StaffInfo';
+import WeatherWidget from '../components/WeatherWidget';
+import stadiums from '../data/stadiums';
+import { IoArrowBack } from 'react-icons/io5';
+import './TeamPage.css';
+
+export default function TeamPage() {
+  const { t } = useTranslation();
+  const { teamId } = useParams();
+  const id = Number(teamId);
+
+  const [teamStanding, setTeamStanding] = useState<Standing | null>(null);
+  const [squad, setSquad] = useState<Player[]>([]);
+  const [fixtures, setFixtures] = useState<Fixture[]>([]);
+  const [injuries, setInjuries] = useState<InjuryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('squad');
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+
+    Promise.all([
+      getStandings(),
+      getTeamSquad(id),
+      getFixtures(id),
+      getInjuries(id).catch(() => []),
+    ])
+      .then(([standingsData, squadData, fixturesData, injuriesData]) => {
+        if (standingsData?.[0]?.league?.standings?.[0]) {
+          const team = standingsData[0].league.standings[0].find(
+            (t) => t.team.id === id
+          );
+          setTeamStanding(team);
+        }
+        if (squadData?.[0]?.players) {
+          setSquad(squadData[0].players);
+        }
+        setFixtures(fixturesData || []);
+        setInjuries(injuriesData || []);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="loading">
+        <div className="spinner" />
+        <span>{t('teamPage.loading')}</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="error">{t('common.error', { message: error })}</div>;
+  }
+
+  if (!teamStanding) {
+    return <div className="error">{t('teamPage.notFound')}</div>;
+  }
+
+  const stadium = stadiums[id];
+  const { team, rank, points, all, goalsDiff, form } = teamStanding;
+
+  return (
+    <div className="team-page">
+      <Link to="/" className="back-link">
+        <IoArrowBack /> {t('teamPage.backToStandings')}
+      </Link>
+
+      <div className="team-hero">
+        <img src={team.logo} alt={team.name} className="team-hero-logo" />
+        <div className="team-hero-info">
+          <h2 className="team-hero-name">{team.name}</h2>
+          {stadium && (
+            <span className="team-stadium">
+              {stadium.name} ({stadium.capacity?.toLocaleString()})
+            </span>
+          )}
+          <div className="team-hero-stats">
+            <div className="hero-stat">
+              <span className="hero-stat-value">{rank}</span>
+              <span className="hero-stat-label">{t('teamPage.position')}</span>
+            </div>
+            <div className="hero-stat">
+              <span className="hero-stat-value highlight">{points}</span>
+              <span className="hero-stat-label">{t('teamPage.points')}</span>
+            </div>
+            <div className="hero-stat">
+              <span className="hero-stat-value">{all.played}</span>
+              <span className="hero-stat-label">{t('teamPage.played')}</span>
+            </div>
+            <div className="hero-stat">
+              <span className="hero-stat-value">{all.win}</span>
+              <span className="hero-stat-label">{t('teamPage.won')}</span>
+            </div>
+            <div className="hero-stat">
+              <span className="hero-stat-value">{all.draw}</span>
+              <span className="hero-stat-label">{t('teamPage.drawn')}</span>
+            </div>
+            <div className="hero-stat">
+              <span className="hero-stat-value">{all.lose}</span>
+              <span className="hero-stat-label">{t('teamPage.lost')}</span>
+            </div>
+            <div className="hero-stat">
+              <span className="hero-stat-value">{goalsDiff > 0 ? '+' : ''}{goalsDiff}</span>
+              <span className="hero-stat-label">{t('teamPage.gd')}</span>
+            </div>
+          </div>
+          <div className="team-form-row">
+            {form && form.split('').slice(-10).map((c, i) => (
+              <span key={i} className={`form-dot form-${c.toLowerCase()}`}>{c}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {stadium && (
+        <WeatherWidget lat={stadium.lat} lon={stadium.lon} stadiumName={stadium.name} />
+      )}
+
+      <div className="team-tabs">
+        <button
+          className={activeTab === 'staff' ? 'active' : ''}
+          onClick={() => setActiveTab('staff')}
+        >
+          {t('teamPage.manager')}
+        </button>
+        <button
+          className={activeTab === 'squad' ? 'active' : ''}
+          onClick={() => setActiveTab('squad')}
+        >
+          {t('teamPage.squad')}
+        </button>
+        <button
+          className={activeTab === 'matches' ? 'active' : ''}
+          onClick={() => setActiveTab('matches')}
+        >
+          {t('teamPage.matches')}
+        </button>
+      </div>
+
+      <div className="team-tab-content card">
+        {activeTab === 'staff' && (
+          <StaffInfo teamId={id} />
+        )}
+        {activeTab === 'squad' && (
+          <SquadList players={squad} injuries={injuries} />
+        )}
+        {activeTab === 'matches' && (
+          <MatchList fixtures={fixtures} />
+        )}
+      </div>
+    </div>
+  );
+}

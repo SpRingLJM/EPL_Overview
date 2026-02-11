@@ -1,0 +1,70 @@
+import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { getCoaches } from '../services/api';
+import type { Coach } from '../types';
+import './StaffInfo.css';
+
+interface Props {
+  teamId: number;
+}
+
+export default function StaffInfo({ teamId }: Props) {
+  const { t } = useTranslation();
+  const [coaches, setCoaches] = useState<Coach[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    getCoaches(teamId)
+      .then((data) => {
+        // Filter to current coach (the one whose career end is null for this team)
+        const current = data.filter((c) =>
+          c.career.some((car) => car.team.id === teamId && !car.end)
+        );
+        setCoaches(current.length > 0 ? current : data.slice(0, 3));
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [teamId]);
+
+  if (loading) {
+    return (
+      <div className="loading">
+        <div className="spinner" />
+        <span>{t('staff.loading')}</span>
+      </div>
+    );
+  }
+
+  if (coaches.length === 0) {
+    return <p className="no-data">{t('staff.unavailable')}</p>;
+  }
+
+  return (
+    <div className="staff-info">
+      {coaches.map((coach) => {
+        const currentRole = coach.career.find(
+          (c) => c.team.id === teamId && !c.end
+        );
+        const startDate = currentRole?.start;
+
+        return (
+          <div key={coach.id} className="staff-card">
+            <img src={coach.photo} alt={coach.name} className="staff-photo" />
+            <div className="staff-details">
+              <h4 className="staff-name">{coach.firstname} {coach.lastname}</h4>
+              <div className="staff-meta">
+                <span className="staff-role">{t('staff.manager')}</span>
+                <span className="staff-nationality">{coach.nationality}</span>
+              </div>
+              <div className="staff-meta">
+                {coach.age && <span>{t('staff.age', { age: coach.age })}</span>}
+                {startDate && <span>{t('staff.since', { date: startDate })}</span>}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
